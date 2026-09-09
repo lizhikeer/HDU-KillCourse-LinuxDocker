@@ -56,6 +56,17 @@
         button:hover {
             background-color: #0056b3;
         }
+        .course-sort-button {
+            width: auto;
+            min-width: 34px;
+            padding: 5px 9px;
+            margin-right: 5px;
+            font-size: 16px;
+        }
+        .course-sort-button:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
         .footer {
             text-align: center;
             margin-top: 20px;
@@ -174,6 +185,8 @@
                             <input type="checkbox" class="course-checkbox" checked>
                             打勾为选课,反之退课
                         </label>
+                        <button type="button" class="course-sort-button move-up" onclick="moveCourseRow(this, -1)" title="上移" aria-label="上移课程">↑</button>
+                        <button type="button" class="course-sort-button move-down" onclick="moveCourseRow(this, 1)" title="下移" aria-label="下移课程">↓</button>
                         <button type="button" onclick="deleteCourseRow(this)" style="padding: 5px 10px; font-size: 14px; width: auto;">删除</button>
                     </div>
                 </div>
@@ -257,15 +270,42 @@
                     <input type="checkbox" class="course-checkbox" checked>
                     打勾为选课,反之退课
                 </label>
+                <button type="button" class="course-sort-button move-up" onclick="moveCourseRow(this, -1)" title="上移" aria-label="上移课程">↑</button>
+                <button type="button" class="course-sort-button move-down" onclick="moveCourseRow(this, 1)" title="下移" aria-label="下移课程">↓</button>
                 <button type="button" onclick="deleteCourseRow(this)" style="padding: 5px 10px; font-size: 14px; width: auto;">删除</button>
             `;
             courseContainer.appendChild(newRow);
+            updateCourseSortButtons();
         }
 
         // 删除课程行
         function deleteCourseRow(button) {
             const row = button.parentElement; // 获取当前行
             row.remove(); // 删除当前行
+            updateCourseSortButtons();
+        }
+
+        // 上移或下移课程行
+        function moveCourseRow(button, direction) {
+            const row = button.closest('.course-row');
+            const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+            if (!sibling) return;
+
+            if (direction < 0) {
+                row.parentElement.insertBefore(row, sibling);
+            } else {
+                row.parentElement.insertBefore(sibling, row);
+            }
+            updateCourseSortButtons();
+        }
+
+        // 首行不能上移，末行不能下移
+        function updateCourseSortButtons() {
+            const rows = document.querySelectorAll('#courseContainer .course-row');
+            rows.forEach((row, index) => {
+                row.querySelector('.move-up').disabled = index === 0;
+                row.querySelector('.move-down').disabled = index === rows.length - 1;
+            });
         }
 
         // cas 和 NewJW 登录优先级切换
@@ -447,10 +487,13 @@
                             <input type="checkbox" class="course-checkbox" ${enabled === "1" ? 'checked' : ''}>
                             打勾为选课,反之退课
                         </label>
+                        <button type="button" class="course-sort-button move-up" onclick="moveCourseRow(this, -1)" title="上移" aria-label="上移课程">↑</button>
+                        <button type="button" class="course-sort-button move-down" onclick="moveCourseRow(this, 1)" title="下移" aria-label="下移课程">↓</button>
                         <button type="button" onclick="deleteCourseRow(this)" style="padding: 5px 10px; font-size: 14px; width: auto;">删除</button>
                     `;
                     courseContainer.appendChild(newRow);
                 });
+                updateCourseSortButtons();
 
                 // 填充蹲课设置数据
                 document.getElementById('waitCoursePriority').checked = config.wait_course.enabled === "1";
