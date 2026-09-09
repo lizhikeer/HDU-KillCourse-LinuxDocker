@@ -40,7 +40,7 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	// 创建一个cookie jar
 	jar, _ := cookiejar.New(nil)
-	userAgent := vars.DefaultUserAgent
+	userAgent := vars.DefaultUserAgent()
 	if cfg != nil && cfg.UserAgent != "" {
 		userAgent = cfg.UserAgent
 	}
