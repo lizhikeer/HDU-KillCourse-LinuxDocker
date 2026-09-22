@@ -1,22 +1,12 @@
-.idea/
-
-# Python
-HDU-KillCourse_Python/
-
-# 配置产生文件忽略
-config.json
-config.example copy.json
-course.json
-ClientBodyConfig.json
-
-# 日志文件忽略
+# Runtime data & credentials
+data/
 log_files/
+*.log
+server.out
 
-# 测试文件忽略
-util/rsa_test.go
+# Backups
+*.bak-*
+*.tar.gz
 
-# 二进制文件忽略
-HDU-KillCourse.exe
-
-# excel文件忽略
-*.xlsx
+# Binaries
+*.exe

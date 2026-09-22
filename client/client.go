@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cr4n5/HDU-KillCourse/config"
-	"github.com/cr4n5/HDU-KillCourse/log"
-	"github.com/cr4n5/HDU-KillCourse/vars"
+	"hdu-grabber/config"
+	"hdu-grabber/log"
+	"hdu-grabber/vars"
 )
 
 type ClientBodyConfig struct {
@@ -31,7 +31,6 @@ type ClientBodyConfig struct {
 type Client struct {
 	client           *http.Client
 	ClientBodyConfig *ClientBodyConfig
-	UserAgent        string
 	NjdmIDXs         string
 	ZyhIDXs          string
 }
@@ -40,15 +39,10 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	// 创建一个cookie jar
 	jar, _ := cookiejar.New(nil)
-	userAgent := vars.DefaultUserAgent()
-	if cfg != nil && cfg.UserAgent != "" {
-		userAgent = cfg.UserAgent
-	}
 	return &Client{
 		client: &http.Client{
 			Jar: jar,
 		},
-		UserAgent: userAgent,
 	}
 }
 
@@ -59,7 +53,7 @@ func (c *Client) Get(url string, headers map[string]string) ([]byte, int, error)
 	}
 
 	// 添加请求头
-	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; rv:60.0) Gecko/20100101 Firefox/60.0")
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -95,7 +89,7 @@ func (c *Client) Post(url string, formData string, headers map[string]string) ([
 
 	// 添加请求头
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; rv:60.0) Gecko/20100101 Firefox/60.0")
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -124,7 +118,7 @@ func (c *Client) Post(url string, formData string, headers map[string]string) ([
 	return result, resp.StatusCode, nil
 }
 
-// SaveCookies 保存cookies
+// SaveCookies 保存cookies（仅回写到内存 cfg，持久化由上层 store 负责）
 func (c *Client) SaveCookies(cfg *config.Config) error {
 	urlStr := "https://newjw.hdu.edu.cn/jwglxt"
 	parsedURL, err := url.Parse(urlStr)
@@ -139,11 +133,6 @@ func (c *Client) SaveCookies(cfg *config.Config) error {
 		if cookie.Name == "route" {
 			cfg.Cookies.Route = cookie.Value
 		}
-	}
-	// 保存配置文件
-	err = config.SaveConfig(cfg)
-	if err != nil {
-		return err
 	}
 
 	return nil

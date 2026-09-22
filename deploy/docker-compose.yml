@@ -1,0 +1,26 @@
+services:
+  grabber:
+    build: .
+    container_name: hdu-grabber
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - DATA_DIR=/app/data
+      - PORT=40000
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:40001:40000"   # 回环调试口，本机可直接访问
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: hdu-grabber-caddy
+    restart: unless-stopped
+    ports:
+      - "40000:40000"             # 公网反代入口（TLS + BasicAuth）
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 如配置自定义证书，可映射证书目录：
+      # - ./certs:/certs:ro
+    depends_on:
+      - grabber

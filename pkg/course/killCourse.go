@@ -1,16 +1,15 @@
 package course
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
-	"time"
 
-	"github.com/cr4n5/HDU-KillCourse/client"
-	"github.com/cr4n5/HDU-KillCourse/config"
-	"github.com/cr4n5/HDU-KillCourse/log"
+	"hdu-grabber/client"
+	"hdu-grabber/config"
+	"hdu-grabber/log"
 )
 
 // GetDoJxbId 获取doJxbId
@@ -60,8 +59,13 @@ func GetDoJxbId(c *client.Client, KchId string, JxbId string, Kklxdm string, Njd
 
 }
 
-// SelectCourse 选课
-func SelectCourse(c *client.Client, JxbIds string, KchId string, Kklxdm string, Jxbzc string, cfg *config.Config) error {
+// SelectCourse 选课（干跑模式只记录不提交；选课失败返回 error 供上层标记状态）
+func SelectCourse(c *client.Client, lg *log.Logger, JxbIds string, KchId string, Kklxdm string, Jxbzc string, cfg *config.Config) error {
+	if cfg.DryRun == "1" {
+		lg.Info("【干跑】跳过提交选课请求: ", KchId)
+		return nil
+	}
+
 	// 设置请求参数
 	req := &client.SelectCourseReq{
 		JxbIDs: JxbIds,
@@ -96,18 +100,23 @@ func SelectCourse(c *client.Client, JxbIds string, KchId string, Kklxdm string, 
 	}
 
 	if result.Flag == "1" {
-		log.Info("选课成功")
+		lg.Info("选课成功")
+		return nil
 	} else if result.Flag == "0" {
-		log.Error("选课失败: ", result.Msg)
-	} else {
-		log.Error("选课失败: 人数可能已满", result)
+		lg.Error("选课失败: ", result.Msg)
+		return fmt.Errorf("选课失败: %s", result.Msg)
 	}
-
-	return nil
+	lg.Error("选课失败: 人数可能已满")
+	return errors.New("选课失败: 人数可能已满")
 }
 
-// CancelCourse 退课
-func CancelCourse(c *client.Client, JxbIds string, KchId string, XueNian string, Xqm string) error {
+// CancelCourse 退课（干跑模式只记录不提交；退课失败返回 error）
+func CancelCourse(c *client.Client, lg *log.Logger, JxbIds string, KchId string, XueNian string, Xqm string, cfg *config.Config) error {
+	if cfg.DryRun == "1" {
+		lg.Info("【干跑】跳过提交退课请求: ", KchId)
+		return nil
+	}
+
 	// 设置请求参数
 	req := &client.CancelCourseReq{
 		JxbIDs: JxbIds,
@@ -123,16 +132,15 @@ func CancelCourse(c *client.Client, JxbIds string, KchId string, XueNian string,
 	}
 
 	if result == "\"1\"" {
-		log.Info("退课成功(可能？)")
-	} else {
-		log.Error("退课失败：", result)
+		lg.Info("退课成功(可能？)")
+		return nil
 	}
-
-	return nil
+	lg.Error("退课失败：", result)
+	return fmt.Errorf("退课失败: %s", result)
 }
 
-// HandleCourse 处理课程
-func HandleCourse(c *client.Client, cfg *config.Config, course *client.GetCourseResp, CourseName string, SelectFlag interface{}) error {
+// HandleCourse 处理课程（查找教学班 → 获取doJxbId → 选课/退课）
+func HandleCourse(c *client.Client, cfg *config.Config, lg *log.Logger, course *client.GetCourseResp, CourseName string, SelectFlag interface{}) error {
 	if course == nil || len(course.Items) == 0 {
 		return errors.New("教学班名称: " + CourseName + " 不存在")
 	}
@@ -153,8 +161,8 @@ func HandleCourse(c *client.Client, cfg *config.Config, course *client.GetCourse
 			}
 
 			// 打印课程信息
-			log.Info("课程名称: ", v.Kcmc)
-			log.Info("上课时间: ", v.Sksj)
+			lg.Info("课程名称: ", v.Kcmc)
+			lg.Info("上课时间: ", v.Sksj)
 
 			// 设置NjdmId
 			NjdmId := "20" + c.ClientBodyConfig.BhId[0:2]
@@ -177,13 +185,13 @@ func HandleCourse(c *client.Client, cfg *config.Config, course *client.GetCourse
 
 			// 选课
 			if SelectFlag == "1" {
-				err = SelectCourse(c, doJxbId, v.KchID, Kklxdm, v.Jxbzc, cfg)
+				err = SelectCourse(c, lg, doJxbId, v.KchID, Kklxdm, v.Jxbzc, cfg)
 				if err != nil {
 					return err
 				}
 			} else {
 				// 退课
-				err = CancelCourse(c, doJxbId, v.KchID, cfg.Time.XueNian, Xqm)
+				err = CancelCourse(c, lg, doJxbId, v.KchID, cfg.Time.XueNian, Xqm, cfg)
 				if err != nil {
 					return err
 				}
@@ -193,95 +201,25 @@ func HandleCourse(c *client.Client, cfg *config.Config, course *client.GetCourse
 		}
 	}
 
-	log.Error("教学班名称: ", CourseName, " 于本地课程列表不存在  将在线获取课程信息...")
+	lg.Warn("教学班名称: ", CourseName, " 于本地课程列表不存在  将在线获取课程信息...")
 	// 在线获取课程
 	onlineCourse, _, err := GetCourseOnline(c, cfg, CourseName)
 	if err != nil {
 		return err
 	}
 
-	return HandleCourse(c, cfg, onlineCourse, CourseName, SelectFlag)
+	return HandleCourse(c, cfg, lg, onlineCourse, CourseName, SelectFlag)
 }
 
-// KillCourse 选退课
-func KillCourse(ctx context.Context, channel chan string, c *client.Client, cfg *config.Config, course *client.GetCourseResp) {
-	// 计算需要等待的时间
-	// 时区
-	// loc, err := time.LoadLocation("Asia/Shanghai")
-	// if err != nil {
-	// 	log.Error("初始化时间地区失败，正在使用手动定义的时区信息 :", err)
-	// 	loc = time.FixedZone("CST", 8*3600)
-	// }
-	loc := time.FixedZone("CST", 8*3600)
-	t, err := time.ParseInLocation("2006-01-02 15:04:05", cfg.StartTime, loc)
-	if err != nil {
-		log.Error("时间格式错误: ", err)
-		return
-	}
-	log.Info("选课开始时间: ", t)
-	waitTime := t.Unix() - time.Now().Unix()
-
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(time.Duration(waitTime) * time.Second):
-		log.Info("时间已到，开始处理课程...")
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// 获取选课配置
-				err = ReadClientBodyConfig(c)
-				if err != nil {
-					// 检查cookies可能已经获取过配置
-					if c.ClientBodyConfig == nil {
-						err = c.GetClientBodyConfig()
-						if err != nil {
-							log.Error("获取选课配置失败: ", err)
-							continue
-						}
-					}
-				}
-				// 保存选课配置
-				if cfg.ClientBodyConfigEnabled == "1" {
-					err = SaveClientBodyConfig(c)
-					if err != nil {
-						log.Error("保存选课配置失败: ", err)
-						return
-					}
-				}
-				log.Info("选课配置获取成功")
-				// 选退课
-				for _, k := range cfg.Course.Keys() {
-					v, _ := cfg.Course.Get(k)
-					// 处理课程
-					log.Info("----------------------------------------")
-					log.Info("正在处理课程: ", k)
-					err = HandleCourse(c, cfg, course, k, v)
-					if err != nil {
-						log.Error("处理课程失败: ", err)
-						continue
-					}
-				}
-				// 完成
-				channel <- "完成"
-				return
-			}
-		}
-	}
-}
-
-// SaveClientBodyConfig 保存选课配置
-func SaveClientBodyConfig(c *client.Client) error {
-	// 将c.ClientBodyConfig保存到文件CLientBodyConfig.json
+// SaveClientBodyConfig 保存选课配置缓存到账号数据目录
+func SaveClientBodyConfig(workDir string, c *client.Client) error {
 	clientBodyConfig := c.ClientBodyConfig
 	bytes, err := json.Marshal(clientBodyConfig)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile("ClientBodyConfig.json", bytes, 0666)
+	err = os.WriteFile(workDir+"/ClientBodyConfig.json", bytes, 0666)
 	if err != nil {
 		return err
 	}
@@ -289,10 +227,9 @@ func SaveClientBodyConfig(c *client.Client) error {
 	return nil
 }
 
-// ReadClientBodyConfig 读取选课配置
-func ReadClientBodyConfig(c *client.Client) error {
-	// 读取文件CLientBodyConfig.json到c.ClientBodyConfig
-	bytes, err := os.ReadFile("ClientBodyConfig.json")
+// ReadClientBodyConfig 从账号数据目录读取选课配置缓存
+func ReadClientBodyConfig(workDir string, c *client.Client) error {
+	bytes, err := os.ReadFile(workDir + "/ClientBodyConfig.json")
 	if err != nil {
 		return err
 	}

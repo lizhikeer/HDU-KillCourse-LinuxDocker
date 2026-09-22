@@ -5,16 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/cr4n5/HDU-KillCourse/client"
-	"github.com/cr4n5/HDU-KillCourse/config"
-	"github.com/cr4n5/HDU-KillCourse/log"
+	"hdu-grabber/client"
+	"hdu-grabber/config"
+	"hdu-grabber/log"
 	"github.com/xuri/excelize/v2"
 )
 
-func GetCourse(c *client.Client, cfg *config.Config) (*client.GetCourseResp, error) {
+// GetCourse 获取课程库：优先读本地 course.json，失败则在线拉取任务落实并落盘
+func GetCourse(c *client.Client, cfg *config.Config, lg *log.Logger, workDir string) (*client.GetCourseResp, error) {
 	// 获取info
 	err := c.GetStuInfo()
 	if err != nil {
@@ -22,14 +24,14 @@ func GetCourse(c *client.Client, cfg *config.Config) (*client.GetCourseResp, err
 	}
 
 	// 先从本地course.json读取课程信息
-	courses, err := ReadCourse(cfg)
+	courses, err := ReadCourse(workDir, cfg)
 	if err == nil {
 		return courses, nil
 	}
 
 	// 本地课程信息读取失败，从服务器获取课程信息
-	log.Error("本地课程信息读取失败，正在从服务器获取课程信息...")
-	log.Info("Notice！: 等待时间可能较长，请耐心等待...")
+	lg.Warn("本地课程信息读取失败，正在从服务器获取课程信息...")
+	lg.Info("Notice！: 等待时间可能较长，请耐心等待...")
 	// 在线获取课程信息
 	XueNian := cfg.Time.XueNian
 	intXueNian, err := strconv.Atoi(XueNian)
@@ -44,15 +46,15 @@ func GetCourse(c *client.Client, cfg *config.Config) (*client.GetCourseResp, err
 	}
 
 	// 将课程信息保存为 Excel
-	err = CourseRenameToExcel(courseToExcelResp, xnmc, xqmc)
+	err = CourseRenameToExcel(courseToExcelResp, xnmc, xqmc, workDir)
 	if err != nil {
-		log.Error("保存课程信息到Excel失败: ", err)
+		lg.Error("保存课程信息到Excel失败: ", err)
 	} else {
-		log.Info("任务落实情况课程已导出到Excel文件中...")
+		lg.Info("任务落实情况课程已导出到Excel文件中...")
 	}
 
 	// 保存课程信息到本地
-	err = SaveCourse(courseResp)
+	err = SaveCourse(workDir, courseResp)
 	if err != nil {
 		return nil, err
 	}
@@ -79,14 +81,8 @@ func GetCourseOnline(c *client.Client, cfg *config.Config, CourseName string) (*
 		return nil, nil, errors.New("学期格式错误")
 	}
 	req := &client.GetCourseReq{
-		// Cxfs:        "1",
-		// Zymc:        "全部",
-		Xnmc: xnmc,
-		Xqmc: xqmc,
-		// Kkxymc:      "全部",
-		// Jgmc:        "全部",
-		// Ywtk:        "0",
-		// Skfs:        "0",
+		Xnmc:        xnmc,
+		Xqmc:        xqmc,
 		Xnm:         XueNian,
 		Xqm:         xqm,
 		Search:      "false",
@@ -107,7 +103,7 @@ func GetCourseOnline(c *client.Client, cfg *config.Config, CourseName string) (*
 }
 
 // CourseRenameToExcel 将课程信息转换为Excel保存
-func CourseRenameToExcel(course *client.GetCourseToExcelResp, xnmc string, xqmc string) error {
+func CourseRenameToExcel(course *client.GetCourseToExcelResp, xnmc string, xqmc string, workDir string) error {
 	// 创建 Excel 文件
 	f := excelize.NewFile()
 
@@ -148,7 +144,12 @@ func CourseRenameToExcel(course *client.GetCourseToExcelResp, xnmc string, xqmc 
 	// 设置工作表为活动表
 	f.SetActiveSheet(index)
 
-	fileName := fmt.Sprintf("%s_%s_任务落实情况课程导出.xlsx", xnmc, xqmc)
+	fileName := filepath.Join(workDir, fmt.Sprintf("%s_%s_任务落实情况课程导出.xlsx", xnmc, xqmc))
+
+	// 目录可能尚未创建（例如新增账号），先补建，否则 SaveAs 会 no such file or directory
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return err
+	}
 
 	// 保存 Excel 文件
 	if err := f.SaveAs(fileName); err != nil {
@@ -182,10 +183,10 @@ func VarifyCourse(course *client.GetCourseResp, cfg *config.Config) error {
 	return nil
 }
 
-// ReadCourse 读取课程信息
-func ReadCourse(cfg *config.Config) (*client.GetCourseResp, error) {
+// ReadCourse 读取课程信息（workDir 内 course.json）
+func ReadCourse(workDir string, cfg *config.Config) (*client.GetCourseResp, error) {
 	// 读取课程信息
-	bytes, err := os.ReadFile("course.json")
+	bytes, err := os.ReadFile(filepath.Join(workDir, "course.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -198,23 +199,27 @@ func ReadCourse(cfg *config.Config) (*client.GetCourseResp, error) {
 
 	// 验证课程信息
 	if err := VarifyCourse(&course, cfg); err != nil {
-		log.Error("课程信息验证失败: ", err)
 		return nil, err
 	}
 
 	return &course, nil
 }
 
-// SaveCourse 保存课程信息
-func SaveCourse(course *client.GetCourseResp) error {
+// SaveCourse 保存课程信息（workDir 内 course.json）
+func SaveCourse(workDir string, course *client.GetCourseResp) error {
 	// 转换为json
 	bytes, err := json.Marshal(course)
 	if err != nil {
 		return err
 	}
 
+	// 目录可能尚未创建（例如新增账号），先补建
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return err
+	}
+
 	// 保存课程信息
-	if err := os.WriteFile("course.json", bytes, 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(workDir, "course.json"), bytes, 0666); err != nil {
 		return err
 	}
 

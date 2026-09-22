@@ -4,22 +4,22 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/cr4n5/HDU-KillCourse/client"
-	"github.com/cr4n5/HDU-KillCourse/config"
-	"github.com/cr4n5/HDU-KillCourse/log"
-	"github.com/cr4n5/HDU-KillCourse/util"
+	"hdu-grabber/client"
+	"hdu-grabber/config"
+	"hdu-grabber/log"
+	"hdu-grabber/util"
 )
 
 // NewjwLogin newjw登录
-func NewjwLogin(c *client.Client, cfg *config.Config) error {
-	log.Info("获取csrftoken...")
+func NewjwLogin(c *client.Client, cfg *config.Config, lg *log.Logger) error {
+	lg.Info("获取csrftoken...")
 	// 获取csrftoken
 	csrftoken, err := c.GetCsrftoken()
 	if err != nil {
 		return err
 	}
 
-	log.Info("获取公钥...")
+	lg.Info("获取公钥...")
 	// 获取公钥
 	publicKey, err := c.GetPublicKey()
 	if err != nil {
@@ -32,7 +32,7 @@ func NewjwLogin(c *client.Client, cfg *config.Config) error {
 		return err
 	}
 
-	log.Info("正在登录...")
+	lg.Info("正在登录...")
 	// 登录
 	loginReq := &client.LoginReq{
 		Csrftoken: csrftoken,
@@ -53,8 +53,8 @@ func NewjwLogin(c *client.Client, cfg *config.Config) error {
 }
 
 // CasPassWordLogin cas使用用户名密码登录
-func CasPassWordLogin(c *client.Client, cfg *config.Config) error {
-	log.Info("获取cas登录配置...")
+func CasPassWordLogin(c *client.Client, cfg *config.Config, lg *log.Logger) error {
+	lg.Info("获取cas登录配置...")
 	// 获取cas登录配置
 	execution, croypto, err := c.GetCasLoginConfig()
 	if err != nil {
@@ -67,7 +67,7 @@ func CasPassWordLogin(c *client.Client, cfg *config.Config) error {
 		return err
 	}
 
-	log.Info("正在cas登录...")
+	lg.Info("正在cas登录...")
 	// cas登录
 	casLoginReq := &client.CasLoginReq{
 		Username:    cfg.CasLogin.Username,
@@ -89,7 +89,7 @@ func CasPassWordLogin(c *client.Client, cfg *config.Config) error {
 	}
 
 	// 通过cas登录newjw
-	log.Info("正在通过cas登录newjw...")
+	lg.Info("正在通过cas登录newjw...")
 	result, err = c.CasLoginNewjw()
 	if err != nil {
 		return err
@@ -102,24 +102,24 @@ func CasPassWordLogin(c *client.Client, cfg *config.Config) error {
 	return nil
 }
 
-// CasQrLogin cas使用钉钉扫码登录
-func CasQrLogin(c *client.Client, cfg *config.Config) error {
-	log.Info("获取cas登录配置...")
+// CasQrLogin cas使用钉钉扫码登录（无头部署下基本不用，保留兼容）
+func CasQrLogin(c *client.Client, cfg *config.Config, lg *log.Logger) error {
+	lg.Info("获取cas登录配置...")
 	// 获取cas登录配置
 	execution, _, err := c.GetCasLoginConfig()
 	if err != nil {
 		return err
 	}
 
-	log.Info("正在获取QrLoginId...")
+	lg.Info("正在获取QrLoginId...")
 	// 获取QrLoginId
 	qrLoginIdResp, err := c.GetQrLoginId()
 	if err != nil {
 		return err
 	}
 
-	log.Info("正在获取二维码...")
-	log.Info("请使用" + log.ErrorColor("钉钉") + "扫码登录...")
+	lg.Info("正在获取二维码...")
+	lg.Info("请使用" + log.ErrorColor("钉钉") + "扫码登录...")
 	var qrLoginStatus *client.QrLoginStatusResp
 	for {
 		// 获取二维码
@@ -149,10 +149,10 @@ func CasQrLogin(c *client.Client, cfg *config.Config) error {
 
 		// 二维码过期
 		util.ClearQrCode()
-		log.Error("二维码已过期, 请重新扫码登录")
+		lg.Error("二维码已过期, 请重新扫码登录")
 	}
 
-	log.Info("正在cas登录...")
+	lg.Info("正在cas登录...")
 	// cas登录
 	casLoginReq := &client.CasLoginReq{
 		Username:    qrLoginStatus.Data,
@@ -171,7 +171,7 @@ func CasQrLogin(c *client.Client, cfg *config.Config) error {
 	}
 
 	// 通过cas登录newjw
-	log.Info("正在通过cas登录newjw...")
+	lg.Info("正在通过cas登录newjw...")
 	result, err = c.CasLoginNewjw()
 	if err != nil {
 		return err
@@ -184,28 +184,33 @@ func CasQrLogin(c *client.Client, cfg *config.Config) error {
 	return nil
 }
 
-// Login 根据Level优先级登录
-func Login(cfg *config.Config) (*client.Client, error) {
+// Login 双重保险登录：优先复用已保存的cookies，失效则按 level 优先级用账密重新登录；
+// 成功后把新 cookies 回写到 cfg（由调用方持久化）。
+func Login(cfg *config.Config, lg *log.Logger) (*client.Client, error) {
 	// 创建一个新的客户端
 	c := client.NewClient(cfg)
 
 	// 使用保存的cookies登录
 	if cfg.Cookies.JSESSIONID != "" && cfg.Cookies.Route != "" && cfg.Cookies.Enabled == "1" {
-		log.Info("正在使用保存的cookies登录...")
+		lg.Info("正在使用保存的cookies登录...")
 		err := c.LoadCookies(cfg)
 		if err != nil {
 			return nil, err
 		}
 
 		// 检查cookies是否有效
-		log.Info("正在检查cookies是否有效...")
+		lg.Info("正在检查cookies是否有效...")
 		err = c.GetClientBodyConfig()
 		if err != nil && err.Error() == "可能登录过期" {
-			log.Error("cookies已过期, 重新登录...")
+			lg.Warn("cookies已过期, 重新登录...")
 			// 重置client
 			c = client.NewClient(cfg)
+		} else if err != nil {
+			// 非过期错误（如选课未开放），会话本身可能仍然有效，视为cookie可用
+			lg.Warn("cookies校验未通过(可能选课未开放): ", err)
+			return c, nil
 		} else {
-			log.Info("cookies应该maybe有效")
+			lg.Info("cookies有效")
 			return c, nil
 		}
 	}
@@ -213,43 +218,43 @@ func Login(cfg *config.Config) (*client.Client, error) {
 	// 根据Level优先级登录
 	if cfg.CasLogin.Level < cfg.NewjwLogin.Level {
 		// cas登录
-		log.Info("正在通过cas登录...")
+		lg.Info("正在通过cas登录...")
 		var err error
 		if cfg.CasLogin.DingDingQrLoginEnabled == "1" {
-			err = CasQrLogin(c, cfg)
+			err = CasQrLogin(c, cfg, lg)
 		} else {
-			err = CasPassWordLogin(c, cfg)
+			err = CasPassWordLogin(c, cfg, lg)
 		}
 		if err != nil {
-			log.Error("cas登录失败: ", err)
+			lg.Error("cas登录失败: ", err)
 			// newjw登录
-			log.Info("正在通过newjw登录...")
+			lg.Info("正在通过newjw登录...")
 			// 重置client
 			c = client.NewClient(cfg)
-			err := NewjwLogin(c, cfg)
+			err := NewjwLogin(c, cfg, lg)
 			if err != nil {
-				log.Error("newjw登录失败: ", err)
+				lg.Error("newjw登录失败: ", err)
 				return nil, err
 			}
 		}
 	} else {
 		// newjw登录
-		log.Info("正在通过newjw登录...")
-		err := NewjwLogin(c, cfg)
+		lg.Info("正在通过newjw登录...")
+		err := NewjwLogin(c, cfg, lg)
 		if err != nil {
-			log.Error("newjw登录失败: ", err)
+			lg.Error("newjw登录失败: ", err)
 			// cas登录
-			log.Info("正在通过cas登录...")
+			lg.Info("正在通过cas登录...")
 			// 重置client
 			c = client.NewClient(cfg)
 			var err error
 			if cfg.CasLogin.DingDingQrLoginEnabled == "1" {
-				err = CasQrLogin(c, cfg)
+				err = CasQrLogin(c, cfg, lg)
 			} else {
-				err = CasPassWordLogin(c, cfg)
+				err = CasPassWordLogin(c, cfg, lg)
 			}
 			if err != nil {
-				log.Error("cas登录失败: ", err)
+				lg.Error("cas登录失败: ", err)
 				return nil, err
 			}
 		}

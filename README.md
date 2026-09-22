@@ -1,112 +1,102 @@
-# HDU-KillCourse
+# HDU-KillCourse-LinuxDocker (Web 面板版)
 
->本项目仅供学习和研究使用请于24小时内删除。使用本项目所产生的任何后果由使用者自行承担。在使用本项目之前，请确保您已充分了解相关法律法规，并确保您的行为符合所在国家或地区的法律要求。未经授权的情况下，请勿将本项目用于商业用途或其他非法用途。转载使用请标明出处。
+[![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](https://golang.org)
+[![Docker](https://img.shields.io/badge/docker-compose-green.svg)](https://www.docker.com/)
+[![Fork](https://img.shields.io/badge/fork-cr4n5%2FHDU--KillCourse-orange.svg)](https://github.com/cr4n5/HDU-KillCourse)
 
-- <img src="./Doc/img/香草蛋糕.jpg" width="100" height="100" alt="huohuo">
+本项目是基于 [cr4n5/HDU-KillCourse](https://github.com/cr4n5/HDU-KillCourse) 深度重构与扩展的 **杭州电子科技大学多账号并发抢课 Docker Web 面板系统**。
 
-`杭电 抢课×选课√`
+在继承原版底层正方教务协议客户端（CAS 统一身份认证 / 钉钉扫码 / 新教务 RSA 登录 / 选退课接口）的基础上，增加了多账号常驻调度引擎、Web 控制台单页应用、Session 自动保活重登、DryRun 干跑保护及容器化一键部署方案。
 
-## 简介
+---
 
-- 支持主修，选修，体育课程，特殊课程
-- 支持蹲课
+## 🌟 核心特性
 
-> [!TIP]
->
-> If you are good at using it, you'll discover some pleasant surprises.
+- 👥 **多账号并发调度**：支持多学号同时常驻挂机，每个账号拥有独立的会话生命周期、运行状态机与课程表优先级队列；
+- 🔐 **双重保险登录链路**：
+  - 优先复用本地 Cookie；
+  - 会话失效时按设定优先级自动使用统一身份认证 CAS 或正方教务账密重登并回写 Cookie；
+- 🛡️ **安全干跑模式 (DryRun)**：运行期支持开启干跑，可模拟完整的到点激活、会话刷新、课程余量查询与解析流程，不向服务器发起最终选退课提交；
+- 📊 **现代化 Web 单页面板**：
+  - 实时倒计时与服务器北京时间对齐；
+  - 账号会话状态（有效/过期/来源）、课程执行结果（成功/失败/排队）一目了然；
+  - 环形缓冲实时日志流展示与账号过滤；
+  - 内置课程库缓存与一键拉取全校教学班信息（支持导出 Excel）；
+- 🐳 **容器化部署与安全隔离**：
+  - Docker Compose 一键拉起；
+  - 支持 Caddy 提供反向代理、TLS 与 HTTP Basic Auth 访问鉴权。
 
-## 环境
+---
 
-Go 1.23
+## 📁 数据目录结构
 
-## 使用
-
-1. 下载编译文件
-
-- 在 [Releases](https://github.com/cr4n5/HDU-KillCourse/releases)中，下载对应系统的可执行文件。
-
-- Or
-
-```shell
-go build
-```
-
-2. 修改配置
-
-`Web编辑配置` :star: `推荐`
-
-- 执行可执行文件
-- 访问 http://localhost:6688 (默认端口) ，即可进入配置页面。
-
-![Web编辑配置](./Doc/img/webEdit.png)
-
-`手动编辑配置`
-
-- 下载 [config.example.json](./config.example.json) 文件，修改对应内容。
-- 配置名更改为 config.json。
+运行期间数据持久化在挂载的 `./data` 目录：
 
 ```
-{
-    "cas_login": {
-        "username": "2201xxxx",//杭电统一身份认证账号密码
-        "password": "xxxxxxxx",
-        "dingDingQrLoginEnabled": "0",//置1使用钉钉扫码登录   默认使用账号密码登录
-        "level:" : "0" //优先级
-    },
-    "newjw_login": {
-        "username": "2201xxxx",//正方教务系统账号密码
-        "password": "xxxxxxxx",
-        "level:" : "1" //优先级
-    }, // 0<1 所以优先使用cas登录 所以0比1大 数学天才
-    "user_agent": "", //请求头中的浏览器标识，为空即随机生成
-    "cookies": { //若 JSESSIONID为空 或 route为空 或 enabled为0，则将不会使用cookies登录
-        "JSESSIONID": "",// 每次登录cookie参数都会自动更新
-        "route": "",
-        "enabled": "1"//如若长时间未使用执行出错，值置为0启动程序重启大法
-    },
-    "time": {
-        "XueNian": "2024",//所选课程所在的学年学期，如2024-2025-1即填写2024与1
-        "XueQi": "1"
-    },
-    //课程教学班名称，如(2024-2025-1)-C2092011-01
-    //课程按顺序执行
-    "course" : {
-        "(2024-2025-1)-C2092011-01" : "1",//1为选课，0为退课
-        "(2024-2025-1)-T1300019-04" : "1",
-        "(2024-2025-1)-T1300019-05" : "1",
-        "(2024-2025-1)-B2700380-02" : "0",
-        "(2024-2025-1)-C2892008-02" : "1",
-        "(2024-2025-1)-W0001321-06" : "0"
-    },
-    "wait_course": {
-        "interval": 60, //查询课程间隔时间，单位秒
-        "enabled": "0" //是否开启蹲课，开启后不再进行定时退选课,将蹲选课程列表中打勾的课程,若有余量立即选课
-    }, 
-    "smtp_email": { //邮件通知，开启后将会在蹲选课成功后发送邮件通知
-        "host": "smtp.qq.com", //smtp服务器
-        "username": "...@qq.com", //发送邮件的邮箱
-        "password": "xxxxxxxx", //发送邮件的邮箱授权码
-        "to": "...@qq.com", //接收邮件的邮箱
-        "enabled": "0" //是否开启邮件通知
-    },
-    "start_time": "2024-07-25 12:00:00",//程序开始时间
+data/
+├── global.json           # 全局设置（定时开始时间/运行模式/轮询间隔/干跑开关/邮件通知）
+├── accounts.json         # 账号队列（凭据、课程表、Cookie 与最新会话状态）
+├── courses/{id}/         # 账号课程库缓存 (course.json) 与导出的任务落实 Excel
+├── clientbody/{id}.json  # 选课控制参数缓存 (ClientBodyConfig)
+└── log_files/            # 实时运行日志 (app.log、debug.log)
+```
+
+---
+
+## 🚀 快速开始（Docker Compose 部署）
+
+### 1. 克隆仓库
+```bash
+git clone https://github.com/lizhikeer/HDU-KillCourse-LinuxDocker.git
+cd HDU-KillCourse-LinuxDocker
+```
+
+### 2. 配置反代访问凭据（可选，但推荐）
+编辑 `deploy/caddy/Caddyfile`，配置你的反代端口或域名以及 Basic Auth 访问口令（可使用 `docker run --rm caddy caddy hash-password --plaintext "你的密码"` 生成哈希值）：
+
+```caddy
+:40000 {
+    basic_auth {
+        admin <生成的哈希值>
+    }
+    reverse_proxy grabber:40000
 }
 ```
 
-3. 选课
+### 3. 一键启动
+```bash
+docker compose up -d --build
+```
 
-- 选课之前，<a href='https://github.com/cr4n5/HDU-course_list'>任务落实课程导出（已合并在此项目中，获取课程信息后会在本目录生成Excel）</a>，排好课表，获取课程教学班名称
+容器启动后：
+- 本机调试端口：`http://127.0.0.1:40001`
+- 公网反代端口：`https://<你的IP或域名>:40000`
 
-> [!NOTE]
->
-> 需在任务落实查询开放后，并在选课之前执行一次可执行文件获取课程信息，第一次获取时间较长
+### 4. 使用步骤
+1. 打开网页管理面板，点击 **【＋ 添加账号】**，输入杭电学号与密码；
+2. 点击账号行的 **【🧪 登录】**，测试验证登录与 Session 有效性；
+3. 点击 **【✏ 编辑】** -> **【🔄 更新课程库】** 同步全校教学班信息；
+4. 填入教学班编号（例如 `(2026-2027-1)-A0512040-06`），设定动作（选课 / 退课）及优先级排序；
+5. 设置开始时间与运行模式，建议先勾选 **【开启干跑模式】** 进行验证，确认无误后正式挂机！
 
-> [!CAUTION]
->
-> 执行期间请勿在他处登录教务系统，如要登录，请将浏览器与配置Cookies同步
+---
 
-- 保证`可执行文件`、`config.json`、`course.json`在同一级目录下，于开始前几分钟执行可执行文件即可
+## 🛠️ 运维与调试
 
-## 协议
+```bash
+# 查看面板运行日志
+docker compose logs -f grabber
 
-[Apache License 2.0](./LICENSE)
+# 重启容器服务（配置与会话无损保存于 ./data）
+docker compose restart grabber
+
+# 更新代码后重新构建
+docker compose up -d --build
+```
+
+---
+
+## 📜 鸣谢与开源许可
+
+- 本项目基于 [cr4n5/HDU-KillCourse](https://github.com/cr4n5/HDU-KillCourse) 衍生开发；
+- 遵循原项目开源许可证 [GPL-3.0 License](LICENSE)。仅供学习与技术研究交流使用，请勿用于商业用途。

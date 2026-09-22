@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/antchfx/htmlquery"
-	"github.com/cr4n5/HDU-KillCourse/util"
+	"hdu-grabber/util"
 	"golang.org/x/net/html"
 )
 
@@ -326,9 +326,6 @@ func (c *Client) GetClientBodyConfig() error {
 	if strings.Contains(string(result), "对不起，当前不属于选课阶段") {
 		return errors.New("当前不属于选课阶段")
 	}
-	if strings.Contains(string(result), "您不在可选课名单中，不可选课") {
-		return errors.New("您不在可选课名单中，不可选课")
-	}
 	// 解析选课配置
 	doc, err := htmlquery.Parse(strings.NewReader(string(result)))
 	if err != nil {
@@ -457,9 +454,6 @@ func (c *Client) GetStuInfo() error {
 	err = json.Unmarshal(result, &stuInfoResp)
 	if err != nil {
 		return err
-	}
-	if stuInfoResp.Xsxx.NJDMID == "" || stuInfoResp.Xsxx.ZYHID == "" {
-		return errors.New("获取学生信息失败")
 	}
 	c.NjdmIDXs = stuInfoResp.Xsxx.NJDMID
 	c.ZyhIDXs = stuInfoResp.Xsxx.ZYHID

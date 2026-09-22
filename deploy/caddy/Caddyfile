@@ -1,0 +1,17 @@
+{
+	admin off
+	auto_https off
+}
+
+:40000 {
+	# TLS 证书路径（按实际挂载配置，或使用 Caddy 自动申请证书）
+	# tls /certs/your-domain.pem /certs/your-domain.key
+
+	# HTTP Basic Auth 访问鉴权（账号及 bcrypt 密码哈希）
+	# 可使用 `caddy hash-password` 生成密码哈希
+	basic_auth {
+		admin $2a$14$EXAMPLE_BCRYPT_HASH_PLEASE_REPLACE_WITH_YOUR_OWN
+	}
+
+	reverse_proxy grabber:40000
+}
