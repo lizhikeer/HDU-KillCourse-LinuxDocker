@@ -9,7 +9,7 @@
 在继承原版底层正方教务协议客户端（CAS 统一身份认证 / 钉钉扫码 / 新教务 RSA 登录 / 选退课接口）的基础上，增加了多账号常驻调度引擎、Web 控制台单页应用、Session 自动保活重登、DryRun 干跑保护及容器化一键部署方案。
 
 ---
-<img width="1645" height="1224" alt="image" src="https://github.com/user-attachments/assets/10ae437b-75d5-4480-bff0-0a4978be11c3" />
+
 
 ## 🌟 核心特性
 
